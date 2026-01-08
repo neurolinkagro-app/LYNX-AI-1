@@ -1,6 +1,7 @@
 from flask import Flask, render_template_string, request
 import pandas as pd
 from datetime import datetime
+import os
 
 app = Flask(__name__)
 
@@ -14,7 +15,6 @@ HTML = """
         .card { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
         h1 { color: #c62828; }
         .alert { color: red; font-weight: bold; }
-        .ok { color: green; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -24,8 +24,8 @@ HTML = """
 <div class="card">
     <h3>Subir archivos Excel</h3>
     <form method="POST" enctype="multipart/form-data">
-        Inventario: <input type="file" name="inventario"><br><br>
-        Temperatura: <input type="file" name="temperatura"><br><br>
+        <p>Inventario: <input type="file" name="inventario" required></p>
+        <p>Temperatura: <input type="file" name="temperatura" required></p>
         <button type="submit">Analizar</button>
     </form>
 </div>
@@ -47,28 +47,40 @@ HTML = """
 def index():
     resultado = None
 
-    if request.method == "POST":
-        inv_file = request.files["inventario"]
-        temp_file = request.files["temperatura"]
+    try:
+        if request.method == "POST":
+            inv_file = request.files.get("inventario")
+            temp_file = request.files.get("temperatura")
 
-        inv = pd.read_excel(inv_file)
-        temp = pd.read_excel(temp_file)
+            if not inv_file or not temp_file:
+                raise Exception("Faltan archivos")
 
-        hoy = datetime.now()
-        inv["fecha_vencimiento"] = pd.to_datetime(inv["fecha_vencimiento"])
+            inv = pd.read_excel(inv_file)
+            temp = pd.read_excel(temp_file)
 
-        vencimientos = inv[inv["fecha_vencimiento"] <= hoy]
-        temp_riesgo = temp[temp["temperatura"] > 5]
+            inv["fecha_vencimiento"] = pd.to_datetime(inv["fecha_vencimiento"], errors="coerce")
+            hoy = datetime.now()
 
-        dinero_riesgo = len(vencimientos) * 250000  # CLP estimado por lote
+            vencimientos = inv[inv["fecha_vencimiento"] <= hoy]
+            temp_riesgo = temp[temp["temperatura"] > 5]
 
+            dinero_riesgo = len(vencimientos) * 250000
+
+            resultado = {
+                "vencimientos": int(len(vencimientos)),
+                "temperatura": int(len(temp_riesgo)),
+                "dinero": f"{dinero_riesgo:,}".replace(",", ".")
+            }
+
+    except Exception as e:
         resultado = {
-            "vencimientos": len(vencimientos),
-            "temperatura": len(temp_riesgo),
-            "dinero": f"{dinero_riesgo:,}".replace(",", ".")
+            "vencimientos": "Error",
+            "temperatura": "Error",
+            "dinero": str(e)
         }
 
     return render_template_string(HTML, resultado=resultado)
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
