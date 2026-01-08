@@ -1,0 +1,74 @@
+from flask import Flask, render_template_string, request
+import pandas as pd
+from datetime import datetime
+
+app = Flask(__name__)
+
+HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>IA Alimentaria & Retail</title>
+    <style>
+        body { font-family: Arial; background: #f4f6f8; padding: 40px; }
+        .card { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        h1 { color: #c62828; }
+        .alert { color: red; font-weight: bold; }
+        .ok { color: green; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<h1>IA Alimentaria & Retail</h1>
+
+<div class="card">
+    <h3>Subir archivos Excel</h3>
+    <form method="POST" enctype="multipart/form-data">
+        Inventario: <input type="file" name="inventario"><br><br>
+        Temperatura: <input type="file" name="temperatura"><br><br>
+        <button type="submit">Analizar</button>
+    </form>
+</div>
+
+{% if resultado %}
+<div class="card">
+    <h3>Resultado IA</h3>
+    <p>Productos en riesgo de vencimiento: <b>{{ resultado.vencimientos }}</b></p>
+    <p>Eventos de temperatura crítica: <b>{{ resultado.temperatura }}</b></p>
+    <p>Dinero estimado en riesgo: <span class="alert">${{ resultado.dinero }}</span></p>
+</div>
+{% endif %}
+
+</body>
+</html>
+"""
+
+@app.route("/", methods=["GET", "POST"])
+def index():
+    resultado = None
+
+    if request.method == "POST":
+        inv_file = request.files["inventario"]
+        temp_file = request.files["temperatura"]
+
+        inv = pd.read_excel(inv_file)
+        temp = pd.read_excel(temp_file)
+
+        hoy = datetime.now()
+        inv["fecha_vencimiento"] = pd.to_datetime(inv["fecha_vencimiento"])
+
+        vencimientos = inv[inv["fecha_vencimiento"] <= hoy]
+        temp_riesgo = temp[temp["temperatura"] > 5]
+
+        dinero_riesgo = len(vencimientos) * 250000  # CLP estimado por lote
+
+        resultado = {
+            "vencimientos": len(vencimientos),
+            "temperatura": len(temp_riesgo),
+            "dinero": f"{dinero_riesgo:,}".replace(",", ".")
+        }
+
+    return render_template_string(HTML, resultado=resultado)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
